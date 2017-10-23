@@ -1,10 +1,32 @@
 
 #include <stdlib.h>
 #include <string.h>
-
+#include "inc\stm32f0xx_hal.h"
 #include "drv_layer\uart.h"
 
+// Gloabl handles Added for use with the HAL library.
+// Instances are initialized so you can use HAL library macros easily.
+// If you use the handles with the HAL library they will retain
+// the initialization info, peripheral state, and any errors.
+//
+// Make sure these structs and function are set up correctly!
 
+
+void (*pTxCallback)(void) = NULL;
+void (*pRxCallback)(void)( UINT32 Status, UINT32 Data ) = NULL;
+
+UART_HandleTypeDef* GetUartHandleFromInst(UINT32 inst)
+{
+    static UART_HandleTypeDef UartHandles[6] = {
+        { .Instance = USART1 },
+        { .Instance = USART2 },
+        { .Instance = USART3 },
+        { .Instance = USART4 },
+        { .Instance = USART5 },
+        { .Instance = USART6 }
+    };
+    return &(UartHandles[inst]);
+}
 
 
 
@@ -39,7 +61,80 @@ void uart_InitForI2DP( UART_CHANNEL channel, void (*pTxFunc)(void), void (*pRxFu
 void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY Parity, UINT32 Stop_bits,
                    void (*pTxFunc)(void), void (*pRxFunc)( UINT32 Status, UINT32 Data ))
 {
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle == NULL || uartHandle->Instance == NULL)
+        return;
+	HAL_UART_DeInit(uartHandle);
+	__HAL_UART_DISABLE(uartHandle);
+    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TXE);
+    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TC);
+    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_RXNE);
 
+    //clear the flags just in the uart was being used previously
+    __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_TXE);
+    __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_RXNE);	
+	switch(Stop_bits)
+    {
+    default:
+    case 1:
+        uartHandle->Init.StopBits = UART_STOPBITS_1;
+        break;
+    case 2:
+        uartHandle->Init.StopBits = UART_STOPBITS_2;
+        break;
+    }
+	switch(Parity)
+    {
+    case PARITY_NONE:
+    default:
+        uartHandle->Init.Parity = UART_PARITY_NONE;
+        break;
+    case PARITY_ODD:
+        uartHandle->Init.Parity = UART_PARITY_ODD;
+        break;
+    case PARITY_EVEN:
+        uartHandle->Init.Parity = UART_PARITY_EVEN;
+        break;
+    }
+    switch(Bits)
+    {
+    case 7:
+        uartHandle->Init.WordLength = UART_WORDLENGTH_8B;
+
+        // If parity isn't used, we have to change the stop bits to fool the
+        // hardware into thinking the msb bit is the stop bit
+        if(parity == PARITY_NONE)
+        {
+          if(Stop_bits == 2)
+		  {
+            uartHandle->Init.StopBits = USART_STOPBITS_1;
+		  }
+          else{
+            uartHandle->Init.StopBits = USART_STOPBITS_0_5;
+		  }
+        }
+        break;
+    default:
+    case 8:
+        // Data bits include parity bit
+        if(parity == PARITY_NONE)
+          uartHandle->Init.WordLength = UART_WORDLENGTH_8B;
+        else
+          uartHandle->Init.WordLength = UART_WORDLENGTH_9B;
+        break;
+    case 9:
+        // 9 data bits not supported by software
+        uartHandle->Init.WordLength = UART_WORDLENGTH_9B;
+         break;
+    }	
+    uartHandle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    uartHandle->Init.BaudRate = Baudrate;
+    uartHandle->Init.Mode = UART_MODE_TX_RX;
+    uartHandle->Init.OverSampling = 0;
+	uartHandle->AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT; 
+    HAL_UART_Init(uartHandle);
+	pTxCallback = pTxFunc;
+	pRxCallback = pRxFunc;
 }
 
 /********************************************************************
@@ -191,7 +286,22 @@ void uart_InitTranscvInfinetEX( UART_CHANNEL channel, void (*pTxFunc)(void), voi
 
 }
 
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(pTxCallback != NULL)
+	{
+		(pTxCallback)();
+	}
+}
 
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(pRxCallback != NULL)
+	{
+		UINT32 data  = (UINT32) READ_REG(huart->Instance->RDR);
+		UINT32 state = (UINT32) huart->RxState;
+		(pTxCallback)(state, data);
+	}
+}
 
 

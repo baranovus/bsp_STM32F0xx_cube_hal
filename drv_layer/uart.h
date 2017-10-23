@@ -2,7 +2,7 @@
 #ifndef _STM32DRIVER_UART_H_
 #define _STM32DRIVER_UART_H_
 
-#include "inc\stm32f10x_lib.h"
+
 
 typedef enum
 {
