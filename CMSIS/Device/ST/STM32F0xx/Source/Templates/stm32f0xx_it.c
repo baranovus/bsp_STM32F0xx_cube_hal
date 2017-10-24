@@ -107,38 +107,23 @@ void SysTick_Handler(void)
   * @brief  These functions handle UART interrupt requests.  
   * @param  None
   * @retval None
-  * @Note   This function is redefined in "main.h" and related to DMA  
-  *         used for USART data transmission     
   */
 void USART1_IRQHandler(void)
 {
-	USART_IRQHandler_Default(&(UartHandles[0])) 
+	uart_Interrupt(STM32_UART1) 
 }
 
 void USART2_IRQHandler(void)
 {
-	USART_IRQHandler_Default(&(UartHandles[1])) 
+	uart_Interrupt(STM32_UART2)  
 }
 
 void USART3_6_IRQHandler(void)
 {
-	USART_IRQHandler_Default(&(UartHandles[2]))
+	uart_Interrupt_3_6();
 }
 
-/*******************************************************************************
-* Function Name  : USART_IRQHandler_Default
-* Description    : Default handler for USARTx global interrupt request.
-* Input          : None
-* Output         : None
-* Return         : None
-*******************************************************************************/
-void USART_IRQHandler_Default(UART_HandleTypeDef *huart)
-{
 
-
-
-
-}
 /**
   * @brief  This function handles external line 4_15 interrupt request.
   * @param  None

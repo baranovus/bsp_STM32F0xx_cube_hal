@@ -21,6 +21,7 @@ typedef enum
     STM32_UART3,
     STM32_UART4,
     STM32_UART5,
+    STM32_UART6,
     DEVICE_MAXNUM_UART
 }
 UART_CHANNEL;
@@ -47,8 +48,10 @@ void uart_TransmitControl( UART_CHANNEL channel, BOOL enable );
 UINT16 uart_Control( UART_CHANNEL channel );
 
 
-extern void uart_Interrupt( UART_CHANNEL channel );
-extern void uart_BSP_InitializeHardware(UART_CHANNEL channel);
+void uart_Interrupt(UART_CHANNEL channel);
+void uart_Interrupt_3_6(void);
+
+
 extern void uart1_BSP_Interrupt(void);
 
 

@@ -12,6 +12,14 @@
 // Make sure these structs and function are set up correctly!
 
 
+typedef struct
+{
+    void    (*pTxFunc)( void );
+    void    (*pRxFunc)( UINT32 Status, UINT32 Data );
+}
+UART_CB;
+UART_CB uart_cb[DEVICE_MAXNUM_UART];
+
 void (*pTxCallback)(void) = NULL;
 void (*pRxCallback)(void)( UINT32 Status, UINT32 Data ) = NULL;
 
@@ -64,15 +72,41 @@ void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY P
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)
         return;
-	HAL_UART_DeInit(uartHandle);
-	__HAL_UART_DISABLE(uartHandle);
-    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TXE);
-    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TC);
-    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_RXNE);
+	UART_CB *pUart = &uart_cb[channel];
+	switch(channel)
+	{
+		case STM32_UART1:
+			__HAL_RCC_USART1_CLK_ENABLE();
+			__HAL_RCC_USART1_FORCE_RESET();
+			__HAL_RCC_USART1_RELEASE_RESET();
+			break;
+		case STM32_UART2:
+			__HAL_RCC_USART2_CLK_ENABLE();
+			__HAL_RCC_USART2_FORCE_RESET();
+			__HAL_RCC_USART2_RELEASE_RESET();
+			break;
+		case STM32_UART3:
+			__HAL_RCC_USART3_CLK_ENABLE();
+			__HAL_RCC_USART3_FORCE_RESET();
+			__HAL_RCC_USART3_RELEASE_RESET();
+			break;
+		case STM32_UART4:
+			__HAL_RCC_USART4_CLK_ENABLE();
+			__HAL_RCC_USART4_FORCE_RESET();
+			__HAL_RCC_USART4_RELEASE_RESET();
+			break;
+		case STM32_UART5:
+			__HAL_RCC_USART5_CLK_ENABLE();
+			__HAL_RCC_USART5_FORCE_RESET();
+			__HAL_RCC_USART5_RELEASE_RESET();
+			break;
+		case STM32_UART6:
+			__HAL_RCC_USART6_CLK_ENABLE();
+			__HAL_RCC_USART6_FORCE_RESET();
+			__HAL_RCC_USART6_RELEASE_RESET();
+			break;			
+	}
 
-    //clear the flags just in the uart was being used previously
-    __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_TXE);
-    __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_RXNE);	
 	switch(Stop_bits)
     {
     default:
@@ -127,51 +161,82 @@ void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY P
         uartHandle->Init.WordLength = UART_WORDLENGTH_9B;
          break;
     }	
+	HAL_UART_DeInit(uartHandle);
     uartHandle->Init.HwFlowCtl = UART_HWCONTROL_NONE;
     uartHandle->Init.BaudRate = Baudrate;
     uartHandle->Init.Mode = UART_MODE_TX_RX;
     uartHandle->Init.OverSampling = 0;
 	uartHandle->AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT; 
     HAL_UART_Init(uartHandle);
-	pTxCallback = pTxFunc;
-	pRxCallback = pRxFunc;
+    pUart->pTxFunc  = pTxFunc;
+    pUart->pRxFunc  = pRxFunc;
+
+    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TXE);
+    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TC);
+    __HAL_UART_DISABLE_IT(uartHandle, UART_IT_RXNE);
+
+    //clear the flags just in the uart was being used previously
+    __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_TXE);
+    __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_RXNE);
 }
 
 /********************************************************************
  *******************************************************************/
 void uart_SetBaudrate( UART_CHANNEL channel, UINT32 Baudrate )
 {
- 
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	uartHandle->Init.BaudRate = Baudrate;
+	UART_SetConfig(uartHandle);	
 }
 
 
-/********************************************************************
- *******************************************************************/
-//Sets the baudrate - use when PCLK1_Frequency = 36Mhz
-void uart_SetBaudrate_Alt( UART_CHANNEL channel, UINT32 Baudrate )
-{
- 
-
-}
 
 /********************************************************************
  *******************************************************************/
 void uart_SendChar( UART_CHANNEL channel, UINT16 data )
 {
- 
+ 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle->Init.WordLength == UART_WORDLENGTH_9B)
+	{
+		uartHandle->Instance->TDR = data &0x01FF;
+	}
+	else{
+		uartHandle->Instance->TDR = data &0x0FF;
+	}
 }
 
-/********************************************************************
- * Description  :Generic UART interrupt.                            *
- *                                                                  *
- * Parameters   :USART_TypeDef *USARTx                              *
- *                                                                  *
- * Return Value :None                                               *
- *******************************************************************/
-void uart_Interrupt( UART_CHANNEL channel )
+/*******************************************************************************
+* Function Name  : USART_IRQHandler
+* Description    : UART interrupt handler for USART1 and USART2
+* Input          : None
+* Output         : None
+* Return         : None
+*******************************************************************************/
+void uart_Interrupt(UART_CHANNEL channel)
 {
- 
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+	UART_CB *pUart = &uart_cb[channel];
+	pTxCallback = pUart->pTxFunc;
+	pRxCallback = pUart->pRxFunc;
+	HAL_UART_IRQHandler(&uartHandle); 
 }
+
+/*******************************************************************************
+* Function Name  : USART_IRQHandler
+* Description    : UART interrupt handler for USART3,4,5,6
+* Input          : None
+* Output         : None
+* Return         : None
+*******************************************************************************/
+void uart_Interrupt_3_6(void)
+{
+
+
+
+
+}
+
 //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 static void uart1_Interrupt( void )
 {
@@ -272,15 +337,7 @@ void uart_InitBasic( UART_CHANNEL channel,void (*pTxFunc)(void), void (*pRxFunc)
 }
 
 
-/********************************************************************
- * Description  :This routine  intializes the uart baud rate, parity*
- *               break etc control bits...                          *
- *                                                                  *
- * Parameters   :UART channel, Baud Rate, Flags, Transmit int func, *
- *               Receive int func                                   *
- *                                                                  *
- * Return Value :none
- *******************************************************************/
+
 void uart_InitTranscvInfinetEX( UART_CHANNEL channel, void (*pTxFunc)(void), void (*pRxFunc)( UINT32 Status, UINT32 Data ))
 {
 
