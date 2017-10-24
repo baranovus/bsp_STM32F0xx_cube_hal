@@ -2354,8 +2354,9 @@ HAL_StatusTypeDef UART_WaitOnFlagUntilTimeout(UART_HandleTypeDef *huart, uint32_
     /* Check for the Timeout */
     if(Timeout != HAL_MAX_DELAY)
     {
-      if((Timeout == 0U) || ((HAL_GetTick()-Tickstart) > Timeout))
-      {
+//		if((Timeout == 0U) || ((HAL_GetTick()-Tickstart) > Timeout)) --CRESTRON modification
+	 if(--Timeout == 0) 	
+	 {
         /* Disable TXE, RXNE, PE and ERR (Frame error, noise error, overrun error) interrupts for the interrupt process */
         CLEAR_BIT(huart->Instance->CR1, (USART_CR1_RXNEIE | USART_CR1_PEIE | USART_CR1_TXEIE));
         CLEAR_BIT(huart->Instance->CR3, USART_CR3_EIE);
@@ -2367,6 +2368,9 @@ HAL_StatusTypeDef UART_WaitOnFlagUntilTimeout(UART_HandleTypeDef *huart, uint32_
         __HAL_UNLOCK(huart);
         return HAL_TIMEOUT;
       }
+	  else{
+			for(INT32 i = 0xff; i>0; i-- ){}
+	  }
     }
   }
   return HAL_OK;

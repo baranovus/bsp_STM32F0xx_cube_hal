@@ -48,7 +48,7 @@ UART_HandleTypeDef* GetUartHandleFromInst(UINT32 inst)
  *******************************************************************/
 void uart_InitForCresnet( UART_CHANNEL channel, void (*pTxFunc)(void), void (*pRxFunc)( UINT32 Status, UINT32 Data ))
 {
-
+	uart_Init232( UART_CHANNEL channel, 38400, 9, PARITY_NONE, 1, pTxFunc, pRxFunc);
 }
 
 void uart_InitForI2DP( UART_CHANNEL channel, void (*pTxFunc)(void), void (*pRxFunc)( UINT32 Status, UINT32 Data ))
@@ -231,10 +231,10 @@ void uart_Interrupt(UART_CHANNEL channel)
 *******************************************************************************/
 void uart_Interrupt_3_6(void)
 {
-
-
-
-
+	for(UART_CHANNEL i = STM32_UART3; i < EVICE_MAXNUM_UART; i++)
+	{
+		uart_Interrupt(i);
+	}
 }
 
 //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -279,13 +279,25 @@ int uart_Flush( UART_CHANNEL channel )
 // transmitter interrupt control for Transmission Complete
 void uart_TxIntControl( UART_CHANNEL channel, BOOL enable )
 {
- 
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+	if(enable)
+	{
+		SET_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
+	}
+	else{
+		CLEAR_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
+		__HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_TXE);		
+	}
 }
 
 // Read Status of Transmitter interrupt Enable Flag for Transmission Complete
 BOOL uart_IsTxIntEnabled( UART_CHANNEL channel )
 {
- 
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+	BOOL res = READ_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
+	return (res);
 }
 
 
@@ -294,12 +306,23 @@ BOOL uart_IsTxIntEnabled( UART_CHANNEL channel )
 // receiver interrupt control
 void uart_RxIntControl( UART_CHANNEL channel, BOOL enable )
 {
-
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+	if(enable)
+	{
+		SET_BIT(huart->Instance->CR1, USART_CR1_RXEIE);
+	}
+	else{
+		CLEAR_BIT(huart->Instance->CR1, USART_CR1_RXEIE);
+	}
 }
 
 BOOL uart_IsRxIntEnabled( UART_CHANNEL channel )
 {
- 
+	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+	BOOL res = READ_BIT(huart->Instance->CR1, USART_CR1_RXEIE);
+	return (res); 
 }
 
 
