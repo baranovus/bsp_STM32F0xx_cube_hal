@@ -204,8 +204,9 @@ void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY P
     uartHandle->Init.Mode = UART_MODE_TX_RX;
     uartHandle->Init.OverSampling = 0;
 	uartHandle->AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT; 
-    HAL_UART_Init(uartHandle);
- 
+	__HAL_UART_DISABLE(huart);
+//    HAL_UART_Init(uartHandle);
+	UART_SetConfig(uartHandle);
     __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TXE);
     __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TC);
     __HAL_UART_DISABLE_IT(uartHandle, UART_IT_RXNE);
