@@ -16,13 +16,17 @@ typedef struct
 {
     void    (*pTxFunc)( void );
     void    (*pRxFunc)( UINT32 Status, UINT32 Data );
+	UINT32	baudrate;
+	UINT8	wordlength;
+	UPARITY parity;
+	UINT8	stop_bits;
 }
 UART_CB;
 UART_CB uart_cb[DEVICE_MAXNUM_UART];
-
+/*
 void (*pTxCallback)(void) = NULL;
 void (*pRxCallback)(void)( UINT32 Status, UINT32 Data ) = NULL;
-
+*/
 UART_HandleTypeDef* GetUartHandleFromInst(UINT32 inst)
 {
     static UART_HandleTypeDef UartHandles[6] = {
@@ -35,8 +39,9 @@ UART_HandleTypeDef* GetUartHandleFromInst(UINT32 inst)
     };
     return &(UartHandles[inst]);
 }
-/* A possible alternative to look-up solution of "GetUartHandleFromInst". Will require less staic
- memory but more stack because handle will be created locally in functions.	
+/* A possible alternative to look-up solution of "GetUartHandleFromInst". 
+Will require less staic  memory but more stack because handle will be created locally in functions.
+Besides, will require storing all UARTs init parameters	in another static array.
  */
 void AssignInstanceToUartHandle(UINT32 channel, UART_HandleTypeDef* uart_handle)
 {
@@ -200,9 +205,7 @@ void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY P
     uartHandle->Init.OverSampling = 0;
 	uartHandle->AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT; 
     HAL_UART_Init(uartHandle);
-    pUart->pTxFunc  = pTxFunc;
-    pUart->pRxFunc  = pRxFunc;
-
+ 
     __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TXE);
     __HAL_UART_DISABLE_IT(uartHandle, UART_IT_TC);
     __HAL_UART_DISABLE_IT(uartHandle, UART_IT_RXNE);
@@ -210,6 +213,13 @@ void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY P
     //clear the flags just in the uart was being used previously
     __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_TXE);
     __HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_RXNE);
+
+	pUart->pTxFunc  	= pTxFunc;
+    pUart->pRxFunc  	= pRxFunc;
+	pUart->wordlength 	= uartHandle->Init.WordLength;
+	pUart->parity		= parity;
+	pUart->baudrate		= Baudrate;
+	pUart->stop_bits	= Stop_bits;
 }
 
 /********************************************************************
@@ -224,7 +234,8 @@ void uart_SetBaudrate( UART_CHANNEL channel, UINT32 Baudrate )
 	UART_HandleTypeDef* uartHandle = &handle;
 	AssignInstanceToUartHandle(channel, uartHandle);
 	uartHandle->Init.BaudRate = Baudrate;
-	UART_SetConfig(uartHandle);	
+	UART_SetConfig(uartHandle);
+	uart_cb[channel].baudrate = Baudrate;	
 }
 
 
@@ -239,7 +250,7 @@ void uart_SendChar( UART_CHANNEL channel, UINT16 data )
 	UART_HandleTypeDef handle;
 	UART_HandleTypeDef* uartHandle = &handle;
 	AssignInstanceToUartHandle(channel, uartHandle);	
-	if(uartHandle->Init.WordLength == UART_WORDLENGTH_9B)
+	if(uart_cb[channel].wordlength == UART_WORDLENGTH_9B)
 	{
 		uartHandle->Instance->TDR = data &0x01FF;
 	}
@@ -284,33 +295,26 @@ void uart_Interrupt(UART_CHANNEL channel)
 			{
 			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_PEF);
 
-			  uartHandle->ErrorCode |= HAL_UART_ERROR_PE;
 			}
 				/* UART frame error interrupt occurred --------------------------------------*/
 			if(((isrflags & USART_ISR_FE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET))
 			{
 			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_FEF);
-
-			  uartHandle->ErrorCode |= HAL_UART_ERROR_FE;
 			}
 			   /* UART noise error interrupt occurred --------------------------------------*/
 			if(((isrflags & USART_ISR_NE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET))
 			{
 			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_NEF);
 
-			  uartHandle->ErrorCode |= HAL_UART_ERROR_NE;
 			}
-
 			/* UART Over-Run interrupt occurred -----------------------------------------*/
 			if(((isrflags & USART_ISR_ORE) != RESET) &&  (((cr1its & USART_CR1_RXNEIE) != RESET) || ((cr3its & USART_CR3_EIE) != RESET)))
 			{
 			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_OREF);
-
-			  uartHandle->ErrorCode |= HAL_UART_ERROR_ORE;
 			}			
 		}
 		UINT16 uhdata = READ_REG(uartHandle->Instance->RDR);
-		if ((uartHandle->Init.WordLength == UART_WORDLENGTH_9B) && (uartHandle->Init.Parity == UART_PARITY_NONE))
+		if ((uart_cb[channel].wordLength == UART_WORDLENGTH_9B) && (uart_cb[channel].parity == PARITY_NONE))
 		{
 			uhdata &= 0x1ff;
 		}
@@ -506,7 +510,7 @@ void uart_InitTranscvInfinetEX( UART_CHANNEL channel, void (*pTxFunc)(void), voi
 {
 
 }
-
+/*
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uartHandle)
 {
 	if(pTxCallback != NULL)
@@ -524,5 +528,5 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uartHandle)
 	   (pTxCallback)(state, data);
 	}
 }
-
+*/
 
