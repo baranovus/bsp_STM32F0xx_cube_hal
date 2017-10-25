@@ -35,7 +35,34 @@ UART_HandleTypeDef* GetUartHandleFromInst(UINT32 inst)
     };
     return &(UartHandles[inst]);
 }
-
+/* A possible alternative to look-up solution of "GetUartHandleFromInst". Will require less staic
+ memory but more stack because handle will be created locally in functions.	
+ */
+void AssignInstanceToUartHandle(UINT32 channel, UART_HandleTypeDef* uart_handle)
+{
+	switch(channel)
+	{
+		case STM32_UART1:
+			uart_handle->Instance = USART1;
+			break;
+		case STM32_UART2:
+			uart_handle->Instance = USART2;
+			break;
+		case STM32_UART3:
+			uart_handle->Instance = USART3;
+			break;
+		case STM32_UART4:
+			uart_handle->Instance = USART4;
+			break;
+		case STM32_UART5:
+			uart_handle->Instance = USART5;
+			break;
+		case STM32_UART6:
+			uart_handle->Instance = USART6;
+			break;
+		default;
+	}	
+}
 
 
 
@@ -69,9 +96,14 @@ void uart_InitForI2DP( UART_CHANNEL channel, void (*pTxFunc)(void), void (*pRxFu
 void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY Parity, UINT32 Stop_bits,
                    void (*pTxFunc)(void), void (*pRxFunc)( UINT32 Status, UINT32 Data ))
 {
+/*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)
         return;
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);
 	UART_CB *pUart = &uart_cb[channel];
 	switch(channel)
 	{
@@ -184,7 +216,13 @@ void uart_Init232( UART_CHANNEL channel, UINT32 Baudrate, UINT32 Bits, UPARITY P
  *******************************************************************/
 void uart_SetBaudrate( UART_CHANNEL channel, UINT32 Baudrate )
 {
+/*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+	
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);
 	uartHandle->Init.BaudRate = Baudrate;
 	UART_SetConfig(uartHandle);	
 }
@@ -195,7 +233,12 @@ void uart_SetBaudrate( UART_CHANNEL channel, UINT32 Baudrate )
  *******************************************************************/
 void uart_SendChar( UART_CHANNEL channel, UINT16 data )
 {
+/*
  	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);	
 	if(uartHandle->Init.WordLength == UART_WORDLENGTH_9B)
 	{
 		uartHandle->Instance->TDR = data &0x01FF;
@@ -214,12 +257,86 @@ void uart_SendChar( UART_CHANNEL channel, UINT16 data )
 *******************************************************************************/
 void uart_Interrupt(UART_CHANNEL channel)
 {
+./*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);	
+	
 	UART_CB *pUart = &uart_cb[channel];
-	pTxCallback = pUart->pTxFunc;
-	pRxCallback = pUart->pRxFunc;
-	HAL_UART_IRQHandler(&uartHandle); 
+//	pTxCallback = pUart->pTxFunc;
+//	pRxCallback = pUart->pRxFunc;
+//	HAL_UART_IRQHandler(uartHandle); 
+	UINT32 isrflags   	= READ_REG(uartHandle->Instance->ISR);
+	UINT32 cr1its     	= READ_REG(uartHandle->Instance->CR1);
+	UINT32 cr3its		= READ_REG(uartHandle->Instance->CR3);
+	UINT32 errorflags	= (isrflags & (UINT32)(USART_ISR_PE | USART_ISR_FE | USART_ISR_ORE | USART_ISR_NE));
+
+    /* UART in mode Receiver ---------------------------------------------------*/
+	if(((isrflags & USART_ISR_RXNE) != RESET) && ((cr1its & USART_CR1_RXNEIE) != RESET))
+	{
+		if (errorflags != RESET)&& (((cr3its & USART_CR3_EIE) != RESET) || ((cr1its & (USART_CR1_RXNEIE | USART_CR1_PEIE)) != RESET)) )
+		{
+			  /* UART parity error interrupt occurred -------------------------------------*/
+			if(((isrflags & USART_ISR_PE) != RESET) && ((cr1its & USART_CR1_PEIE) != RESET))
+			{
+			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_PEF);
+
+			  uartHandle->ErrorCode |= HAL_UART_ERROR_PE;
+			}
+				/* UART frame error interrupt occurred --------------------------------------*/
+			if(((isrflags & USART_ISR_FE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET))
+			{
+			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_FEF);
+
+			  uartHandle->ErrorCode |= HAL_UART_ERROR_FE;
+			}
+			   /* UART noise error interrupt occurred --------------------------------------*/
+			if(((isrflags & USART_ISR_NE) != RESET) && ((cr3its & USART_CR3_EIE) != RESET))
+			{
+			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_NEF);
+
+			  uartHandle->ErrorCode |= HAL_UART_ERROR_NE;
+			}
+
+			/* UART Over-Run interrupt occurred -----------------------------------------*/
+			if(((isrflags & USART_ISR_ORE) != RESET) &&  (((cr1its & USART_CR1_RXNEIE) != RESET) || ((cr3its & USART_CR3_EIE) != RESET)))
+			{
+			  __HAL_UART_CLEAR_IT(uartHandle, UART_CLEAR_OREF);
+
+			  uartHandle->ErrorCode |= HAL_UART_ERROR_ORE;
+			}			
+		}
+		UINT16 uhdata = READ_REG(uartHandle->Instance->RDR);
+		if ((uartHandle->Init.WordLength == UART_WORDLENGTH_9B) && (uartHandle->Init.Parity == UART_PARITY_NONE))
+		{
+			uhdata &= 0x1ff;
+		}
+		else{
+			uhdata &= 0xff;	
+		}
+		if(pUart->pRxFunc != NULL)
+		{
+			(*pUart->pRxFunc)(isrflags, uhdata);
+		}
+	}
+  /* UART in mode Transmitter ------------------------------------------------*/
+	if(((isrflags & USART_ISR_TC) != RESET) && ((cr1its & USART_CR1_TCIE) != RESET))
+	{
+   	    /* If ISR TX Function Ptr defined, jump to this app specific callback */
+		if ( pUart->pTxFunc )
+		{		
+			(*pUart->pTxFunc)();
+		}
+		/* If the callback did not clear the flag reading the data, reset it here */
+		if(READ_BIT(uartHandle->Instance->ISR, USART_ISR_TC)
+		{
+			    /* Clear the TC flag in the ICR register */
+			__HAL_UART_CLEAR_FLAG(uartHandle, UART_CLEAR_TCF);
+		}
+	}
 }
 
 /*******************************************************************************
@@ -279,14 +396,20 @@ int uart_Flush( UART_CHANNEL channel )
 // transmitter interrupt control for Transmission Complete
 void uart_TxIntControl( UART_CHANNEL channel, BOOL enable )
 {
+/*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);	
+	
 	if(enable)
 	{
-		SET_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
+		SET_BIT(uartHandle->Instance->CR1, USART_CR1_TCIE);
 	}
 	else{
-		CLEAR_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
+		CLEAR_BIT(uartHandle->Instance->CR1, USART_CR1_TCIE);
 		__HAL_UART_CLEAR_FLAG(uartHandle, UART_FLAG_TXE);		
 	}
 }
@@ -294,9 +417,15 @@ void uart_TxIntControl( UART_CHANNEL channel, BOOL enable )
 // Read Status of Transmitter interrupt Enable Flag for Transmission Complete
 BOOL uart_IsTxIntEnabled( UART_CHANNEL channel )
 {
+/*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
-	BOOL res = READ_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);	
+	
+	BOOL res = READ_BIT(uartHandle->Instance->CR1, USART_CR1_TCIE);
 	return (res);
 }
 
@@ -306,22 +435,34 @@ BOOL uart_IsTxIntEnabled( UART_CHANNEL channel )
 // receiver interrupt control
 void uart_RxIntControl( UART_CHANNEL channel, BOOL enable )
 {
+/*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);	
+	
 	if(enable)
 	{
-		SET_BIT(huart->Instance->CR1, USART_CR1_RXEIE);
+		SET_BIT(uartHandle->Instance->CR1, USART_CR1_RXEIE);
 	}
 	else{
-		CLEAR_BIT(huart->Instance->CR1, USART_CR1_RXEIE);
+		CLEAR_BIT(uartHandle->Instance->CR1, USART_CR1_RXEIE);
 	}
 }
 
 BOOL uart_IsRxIntEnabled( UART_CHANNEL channel )
 {
+/*
 	UART_HandleTypeDef* uartHandle = GetUartHandleFromInst(channel);
 	if(uartHandle == NULL || uartHandle->Instance == NULL)    return; 
-	BOOL res = READ_BIT(huart->Instance->CR1, USART_CR1_RXEIE);
+*/
+	UART_HandleTypeDef handle;
+	UART_HandleTypeDef* uartHandle = &handle;
+	AssignInstanceToUartHandle(channel, uartHandle);	
+	
+	BOOL res = READ_BIT(uartHandle->Instance->CR1, USART_CR1_RXEIE);
 	return (res); 
 }
 
@@ -366,7 +507,7 @@ void uart_InitTranscvInfinetEX( UART_CHANNEL channel, void (*pTxFunc)(void), voi
 
 }
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uartHandle)
 {
 	if(pTxCallback != NULL)
 	{
@@ -374,13 +515,13 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uartHandle)
 {
 	if(pRxCallback != NULL)
 	{
-		UINT32 data  = (UINT32) READ_REG(huart->Instance->RDR);
-		UINT32 state = (UINT32) huart->RxState;
-		(pTxCallback)(state, data);
+		UINT32 data  = (UINT32) READ_REG(uartHandle->Instance->RDR);
+		UINT32 state = (UINT32) READ_REG(uartHandle->Instance->ISR);
+	   (pTxCallback)(state, data);
 	}
 }
 
